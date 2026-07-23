@@ -10,7 +10,7 @@ contract DelegationManagerMock is IDelegationManager {
         share = _share;
     }
 
-    function operatorShares(address operator, address strategy) external view override returns (uint256) {
+    function operatorShares(address, address) external view override returns (uint256) {
         return share;
     }
 }

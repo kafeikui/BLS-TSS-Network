@@ -6,6 +6,7 @@ use crate::{
 use super::{ChainIdentity, MainChainIdentity};
 use alloy::providers::fillers::ChainIdFiller;
 use alloy::signers::Signer;
+use alloy::transports::http::reqwest::Url;
 use alloy::{
     eips::{eip1559::Eip1559Estimation, BlockId},
     network::EthereumWallet,
@@ -32,7 +33,7 @@ pub type ProviderClientWithSigner = FillProvider<
     RootProvider,
 >;
 
-pub async fn build_client(
+pub async fn build_websocket_client(
     wallet: PrivateKeySigner,
     chain_id: u64,
     ws_connect: WsConnect,
@@ -52,11 +53,30 @@ pub async fn build_client(
     Ok(client)
 }
 
+pub async fn build_http_client(
+    wallet: PrivateKeySigner,
+    chain_id: u64,
+    http_connect: Url,
+) -> Result<ProviderClientWithSigner, TransportError> {
+    let wallet = wallet.with_chain_id(Some(chain_id));
+
+    let client = ProviderBuilder::new()
+        .disable_recommended_fillers()
+        .filler(ChainIdFiller::new(Some(chain_id)))
+        .with_cached_nonce_management()
+        .filler(BlobGasFiller)
+        .filler(GasMiddleware::new(GAS_RAISE_PERCENTAGE).expect("Failed to create GasMiddleware"))
+        .wallet(wallet)
+        .connect_http(http_connect);
+
+    Ok(client)
+}
+
 #[derive(Debug, Clone)]
 pub struct GeneralMainChainIdentity {
     chain_id: u64,
     wallet: PrivateKeySigner,
-    ws_connect: WsConnect,
+    ws_connect: Option<WsConnect>,
     client: ProviderClientWithSigner,
     provider_endpoint: String,
     controller_address: Address,
@@ -72,7 +92,7 @@ impl GeneralMainChainIdentity {
     pub fn new(
         chain_id: u64,
         wallet: PrivateKeySigner,
-        ws_connect: WsConnect,
+        ws_connect: Option<WsConnect>,
         client: ProviderClientWithSigner,
         provider_endpoint: String,
         controller_address: Address,
@@ -158,6 +178,10 @@ impl ChainIdentity for GeneralMainChainIdentity {
             .await
             .map(|o| o.map(|b| b.header.timestamp))
     }
+
+    fn supports_websocket(&self) -> bool {
+        self.ws_connect.is_some()
+    }
 }
 
 impl MainChainIdentity for GeneralMainChainIdentity {
@@ -183,8 +207,17 @@ impl ChainProviderManager for GeneralMainChainIdentity {
     async fn reset_provider(&mut self) -> Result<(), TransportError> {
         debug!("Resetting provider for chain {}", self.chain_id);
 
-        self.client =
-            build_client(self.wallet.clone(), self.chain_id, self.ws_connect.clone()).await?;
+        if let Some(ws_connect) = self.ws_connect.clone() {
+            self.client =
+                build_websocket_client(self.wallet.clone(), self.chain_id, ws_connect).await?;
+        } else {
+            self.client = build_http_client(
+                self.wallet.clone(),
+                self.chain_id,
+                self.provider_endpoint.parse().unwrap(),
+            )
+            .await?;
+        }
 
         debug!("Provider reset for chain {}", self.chain_id);
 
@@ -196,7 +229,7 @@ impl ChainProviderManager for GeneralMainChainIdentity {
 pub struct GeneralRelayedChainIdentity {
     chain_id: u64,
     wallet: PrivateKeySigner,
-    ws_connect: WsConnect,
+    ws_connect: Option<WsConnect>,
     client: ProviderClientWithSigner,
     provider_endpoint: String,
     controller_oracle_address: Address,
@@ -211,7 +244,7 @@ impl GeneralRelayedChainIdentity {
     pub fn new(
         chain_id: u64,
         wallet: PrivateKeySigner,
-        ws_connect: WsConnect,
+        ws_connect: Option<WsConnect>,
         client: ProviderClientWithSigner,
         provider_endpoint: String,
         controller_oracle_address: Address,
@@ -295,6 +328,10 @@ impl ChainIdentity for GeneralRelayedChainIdentity {
             .await
             .map(|o| o.map(|b| b.header.timestamp))
     }
+
+    fn supports_websocket(&self) -> bool {
+        self.ws_connect.is_some()
+    }
 }
 
 impl RelayedChainIdentity for GeneralRelayedChainIdentity {
@@ -316,8 +353,17 @@ impl ChainProviderManager for GeneralRelayedChainIdentity {
     async fn reset_provider(&mut self) -> Result<(), TransportError> {
         debug!("Resetting provider for chain {}", self.chain_id);
 
-        self.client =
-            build_client(self.wallet.clone(), self.chain_id, self.ws_connect.clone()).await?;
+        if let Some(ws_connect) = self.ws_connect.clone() {
+            self.client =
+                build_websocket_client(self.wallet.clone(), self.chain_id, ws_connect).await?;
+        } else {
+            self.client = build_http_client(
+                self.wallet.clone(),
+                self.chain_id,
+                self.provider_endpoint.parse().unwrap(),
+            )
+            .await?;
+        }
 
         debug!("Provider reset for chain {}", self.chain_id);
 

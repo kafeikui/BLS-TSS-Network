@@ -7,6 +7,8 @@ pub mod randomness_signature_aggregation;
 pub mod ready_to_handle_randomness_task;
 pub mod schedule_node_activation;
 pub mod schedule_provider_reconnection;
+pub mod test_registered_account;
+pub mod test_ws_provider;
 use crate::error::NodeResult;
 use arpa_core::jitter;
 use arpa_core::log::{build_general_payload, LogType};

@@ -127,7 +127,7 @@ mod tests {
     use alloy::sol;
     use anyhow::anyhow;
     use arpa_core::{
-        build_client, random_address, Config, FixedIntervalRetryDescriptor,
+        build_websocket_client, random_address, Config, FixedIntervalRetryDescriptor,
         GeneralMainChainIdentity, ListenerType, ProviderClientWithSigner,
     };
     use std::sync::Arc;
@@ -174,7 +174,8 @@ mod tests {
             let chain_id = anvil.chain_id();
             println!("Chain ID: {}", chain_id);
 
-            let client = build_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
+            let client =
+                build_websocket_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
 
             let (controller_address, node_registry_address) =
                 deploy_contracts(client.clone()).await?;
@@ -197,7 +198,7 @@ mod tests {
             let chain_identity = GeneralMainChainIdentity::new(
                 self.chain_id,
                 self.wallet.clone(),
-                ws_connect.clone(),
+                Some(ws_connect.clone()),
                 self.client.clone(),
                 ws_endpoint,
                 self.controller_address,

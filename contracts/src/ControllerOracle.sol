@@ -5,12 +5,11 @@ import {IERC20, SafeERC20} from "openzeppelin-contracts/contracts/token/ERC20/ut
 import {OwnableUpgradeable} from "openzeppelin-contracts-upgradeable/contracts/access/OwnableUpgradeable.sol";
 import {UUPSUpgradeable} from "openzeppelin-contracts-upgradeable/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {IControllerOracle} from "./interfaces/IControllerOracle.sol";
-import {IOPCrossDomainMessenger} from "./interfaces/IOPCrossDomainMessenger.sol";
 import {IAdapter} from "./interfaces/IAdapter.sol";
 // solhint-disable-next-line no-global-import
 import "./utils/Utils.sol" as Utils;
 
-contract ControllerOracle is UUPSUpgradeable, IControllerOracle, OwnableUpgradeable {
+abstract contract ControllerOracle is UUPSUpgradeable, IControllerOracle, OwnableUpgradeable {
     using SafeERC20 for IERC20;
 
     struct GroupData {
@@ -23,23 +22,22 @@ contract ControllerOracle is UUPSUpgradeable, IControllerOracle, OwnableUpgradea
     }
 
     // *Constants*
-    uint16 private constant _BALANCE_BASE = 1;
+    uint16 internal constant _BALANCE_BASE = 1;
 
     // *Controller Config*
-    IERC20 private _arpa;
-    address private _chainMessenger;
-    IOPCrossDomainMessenger private _l2CrossDomainMessenger;
-    address private _adapterContractAddress;
+    IERC20 internal _arpa;
+    address internal _chainMessenger;
+    address internal _adapterContractAddress;
 
     // *Node State Variables*
-    mapping(address => uint256) private _withdrawableEths; // maps node address to withdrawable eth amount
-    mapping(address => uint256) private _arpaRewards; // maps node address to arpa rewards
+    mapping(address => uint256) internal _withdrawableEths; // maps node address to withdrawable eth amount
+    mapping(address => uint256) internal _arpaRewards; // maps node address to arpa rewards
 
     // *Group Variables*
     GroupData internal _groupData;
 
     // *Task Variables*
-    uint256 private _lastOutput;
+    uint256 internal _lastOutput;
 
     // *Events*
     event NodeRewarded(address indexed nodeAddress, uint256 ethAmount, uint256 arpaAmount);
@@ -61,25 +59,7 @@ contract ControllerOracle is UUPSUpgradeable, IControllerOracle, OwnableUpgradea
     // solhint-disable-next-line no-empty-blocks
     function _authorizeUpgrade(address) internal override onlyOwner {}
 
-    function initialize(address arpa, address l2CrossDomainMessenger, uint256 lastOutput) public initializer {
-        _arpa = IERC20(arpa);
-        _l2CrossDomainMessenger = IOPCrossDomainMessenger(l2CrossDomainMessenger);
-        _lastOutput = lastOutput;
-
-        __Ownable_init();
-    }
-
-    function updateGroup(address committer, Group memory group) external {
-        if (
-            msg.sender != owner()
-                && (
-                    msg.sender != address(_l2CrossDomainMessenger)
-                        || _l2CrossDomainMessenger.xDomainMessageSender() != _chainMessenger
-                )
-        ) {
-            revert SenderNotChainMessenger();
-        }
-
+    function _updateGroup(address committer, Group memory group) internal {
         uint256 groupIndex = group.index;
 
         if (group.epoch <= _groupData.groups[groupIndex].epoch) {
@@ -102,13 +82,6 @@ contract ControllerOracle is UUPSUpgradeable, IControllerOracle, OwnableUpgradea
             revert InvalidZeroAddress();
         }
         _chainMessenger = chainMessenger;
-    }
-
-    function setL2CrossDomainMessenger(address l2CrossDomainMessenger) external onlyOwner {
-        if (l2CrossDomainMessenger == address(0)) {
-            revert InvalidZeroAddress();
-        }
-        _l2CrossDomainMessenger = IOPCrossDomainMessenger(l2CrossDomainMessenger);
     }
 
     function setAdapterContractAddress(address adapterContractAddress) external onlyOwner {

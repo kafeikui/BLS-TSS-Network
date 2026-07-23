@@ -96,8 +96,8 @@ mod tests {
     use alloy::providers::WsConnect;
     use alloy::signers::local::PrivateKeySigner;
     use arpa_core::{
-        build_client, random_address, Config, GeneralMainChainIdentity, ListenerDescriptor,
-        ListenerType, RandomnessTask, PLACEHOLDER_ADDRESS,
+        build_websocket_client, random_address, Config, GeneralMainChainIdentity,
+        ListenerDescriptor, ListenerType, RandomnessTask, PLACEHOLDER_ADDRESS,
     };
     use arpa_dal::{
         cache::{
@@ -138,7 +138,7 @@ mod tests {
         let avnil = Anvil::new().chain_id(chain_id).spawn();
 
         let ws_connect = WsConnect::new(avnil.ws_endpoint());
-        let client = build_client(fake_wallet.clone(), chain_id, ws_connect.clone())
+        let client = build_websocket_client(fake_wallet.clone(), chain_id, ws_connect.clone())
             .await
             .unwrap();
 
@@ -152,7 +152,7 @@ mod tests {
         let main_chain_identity = GeneralMainChainIdentity::new(
             chain_id,
             fake_wallet,
-            ws_connect,
+            Some(ws_connect),
             client,
             avnil.ws_endpoint(),
             random_address(),

@@ -44,6 +44,7 @@ pub const DEFAULT_PROVIDER_RESET_MAX_ATTEMPTS: usize = 17280;
 pub const DEFAULT_PROVIDER_RESET_USE_JITTER: bool = true;
 
 pub const DEFAULT_PROVIDER_POLLING_INTERVAL_MILLIS: u64 = 10000;
+pub const DEFAULT_PROVIDER_EVENT_POLLING_INTERVAL_MILLIS: u64 = 2000;
 
 pub const DEFAULT_PROVIDER_RECONNECTION_INTERVAL_MILLIS: u64 = 30000;
 
@@ -604,9 +605,6 @@ impl From<ConfigHolder> for Config {
         } else {
             config_holder.provider_endpoint
         };
-        if !provider_endpoint.starts_with("ws") {
-            panic!("Provider endpoint must be a websocket endpoint");
-        }
         let chain_id = config_holder.chain_id;
         let is_eigenlayer = if config_holder.is_eigenlayer.is_none() {
             false
@@ -815,6 +813,10 @@ impl Config {
 
     pub fn get_provider_endpoint(&self) -> &str {
         &self.provider_endpoint
+    }
+
+    pub fn supports_websocket(&self) -> bool {
+        self.provider_endpoint.starts_with("ws://") || self.provider_endpoint.starts_with("wss://")
     }
 
     pub fn get_controller_address(&self) -> &str {
@@ -1050,9 +1052,6 @@ impl From<RelayedChainHolder> for RelayedChain {
         } else {
             relayed_chain_holder.provider_endpoint
         };
-        if !provider_endpoint.starts_with("ws") {
-            panic!("Provider endpoint must be a websocket endpoint");
-        }
         let controller_oracle_address = relayed_chain_holder.controller_oracle_address;
         let adapter_address = relayed_chain_holder.adapter_address;
         let adapter_deployed_block_height =
@@ -1147,6 +1146,10 @@ impl RelayedChain {
 
     pub fn get_provider_endpoint(&self) -> &str {
         &self.provider_endpoint
+    }
+
+    pub fn supports_websocket(&self) -> bool {
+        self.provider_endpoint.starts_with("ws://") || self.provider_endpoint.starts_with("wss://")
     }
 
     pub fn get_controller_oracle_address(&self) -> &str {

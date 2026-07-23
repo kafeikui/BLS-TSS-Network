@@ -18,10 +18,10 @@ import {Staking} from "Staking-v0.1/Staking.sol";
 contract CreateAndSetOPStackChainMessengerScript is Deployer {
     uint256 internal _deployerPrivateKey = vm.envUint("ADMIN_PRIVATE_KEY");
 
-    address internal _opControllerOracleAddress = vm.envAddress("OP_CONTROLLER_ORACLE_ADDRESS");
+    address internal _opControllerOracleAddress = vm.envAddress("L2_CONTROLLER_ORACLE_ADDRESS");
     address internal _opL1CrossDomainMessengerAddress = vm.envAddress("OP_L1_CROSS_DOMAIN_MESSENGER_ADDRESS");
     address internal _controllerRelayer = vm.envAddress("EXISTING_L1_CONTROLLER_RELAYER");
-    uint256 internal _opChainId = vm.envUint("OP_CHAIN_ID");
+    uint256 internal _opChainId = vm.envUint("L2_CHAIN_ID");
 
     function run() external {
         ControllerRelayer controllerRelayer;

@@ -57,24 +57,26 @@ impl<PC: Curve + Sync + Send> Listener for BlockListener<PC> {
 
         let provider = self.chain_identity.read().await.get_provider().clone();
 
-        provider
-            .subscribe_new_block_height(move |block_height: usize| {
-                debug!("New block height: {} for chain {}", block_height, chain_id);
+        let callback = move |block_height: usize| {
+            debug!("New block height: {} for chain {}", block_height, chain_id);
 
-                let eq = eq.clone();
-                async move {
-                    eq.read()
-                        .await
-                        .publish(NewBlock {
-                            chain_id,
-                            block_height,
-                        })
-                        .await;
-
-                    Ok(())
-                }
-            })
-            .await?;
+            let eq = eq.clone();
+            async move {
+                eq.read()
+                    .await
+                    .publish(NewBlock {
+                        chain_id,
+                        block_height,
+                    })
+                    .await;
+                Ok(())
+            }
+        };
+        if self.chain_identity.read().await.supports_websocket() {
+            provider.subscribe_new_block_height(callback).await?;
+        } else {
+            provider.watch_new_block_height(callback).await?;
+        }
 
         Ok(())
     }
@@ -112,8 +114,8 @@ mod tests {
     };
     use anyhow::anyhow;
     use arpa_core::{
-        build_client, Config, FixedIntervalRetryDescriptor, GeneralMainChainIdentity, ListenerType,
-        ProviderClientWithSigner,
+        build_websocket_client, Config, FixedIntervalRetryDescriptor, GeneralMainChainIdentity,
+        ListenerType, ProviderClientWithSigner,
     };
     use std::sync::Arc;
     use std::time::Duration;
@@ -204,14 +206,14 @@ mod tests {
 
         let config = Config::default();
 
-        let client = build_client(wallet.clone(), chain_id, ws_connect.clone())
+        let client = build_websocket_client(wallet.clone(), chain_id, ws_connect.clone())
             .await
             .unwrap();
 
         let chain_identity = GeneralMainChainIdentity::new(
             chain_id,
             wallet.clone(),
-            ws_connect.clone(),
+            Some(ws_connect.clone()),
             client.clone(),
             anvil.ws_endpoint(),
             controller_address,

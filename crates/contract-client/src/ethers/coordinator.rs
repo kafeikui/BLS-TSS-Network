@@ -254,7 +254,7 @@ pub mod coordinator_tests {
     use alloy::signers::local::coins_bip39::English;
     use alloy::signers::local::MnemonicBuilder;
     use alloy::signers::local::PrivateKeySigner;
-    use arpa_core::build_client;
+    use arpa_core::build_websocket_client;
     use arpa_core::Config;
     use arpa_core::GeneralMainChainIdentity;
     use simple_logger::SimpleLogger;
@@ -288,7 +288,9 @@ pub mod coordinator_tests {
             WsConnect::new(anvil.ws_endpoint()).with_retry_interval(Duration::from_millis(3000));
 
         // 4. instantiate the client with the wallet
-        let client = build_client(wallet, anvil.chain_id(), ws).await.unwrap();
+        let client = build_websocket_client(wallet, anvil.chain_id(), ws)
+            .await
+            .unwrap();
 
         // let client = build_client(wallet, anvil.chain_id() as usize, provider);
 
@@ -355,14 +357,14 @@ pub mod coordinator_tests {
         let ws_connect =
             WsConnect::new(anvil.ws_endpoint()).with_retry_interval(Duration::from_millis(3000));
 
-        let client = build_client(wallet.clone(), anvil.chain_id(), ws_connect.clone())
+        let client = build_websocket_client(wallet.clone(), anvil.chain_id(), ws_connect.clone())
             .await
             .unwrap();
 
         let main_chain_identity = GeneralMainChainIdentity::new(
             anvil.chain_id(),
             wallet,
-            ws_connect,
+            Some(ws_connect),
             client,
             anvil.ws_endpoint(),
             Address::ZERO,

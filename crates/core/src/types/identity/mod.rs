@@ -35,6 +35,8 @@ pub trait ChainIdentity {
         &self,
         block_number: BlockNumber,
     ) -> Result<Option<u64>, TransportError>;
+
+    fn supports_websocket(&self) -> bool;
 }
 
 pub trait MainChainIdentity: ChainIdentity {

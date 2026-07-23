@@ -31,9 +31,9 @@ NODE_CLIENT_BINARY_DIR = os.path.join(ROOT_DIR, "target/release")
 
 
 # RPC INFO
-L2_CHAIN_ID = get_key(ENV_PATH, "OP_CHAIN_ID")
-L2_RPC = get_key(ENV_PATH, "OP_RPC")
-L2_WS_RPC = get_key(ENV_PATH, "OP_WS_RPC")
+L2_CHAIN_ID = get_key(ENV_PATH, "L2_CHAIN_ID")
+L2_RPC = get_key(ENV_PATH, "L2_RPC")
+L2_WS_RPC = get_key(ENV_PATH, "L2_WS_RPC")
 L1_CHAIN_ID = get_key(ENV_PATH, "L1_CHAIN_ID")
 L1_RPC = get_key(ENV_PATH, "L1_RPC")
 L1_WS_RPC = get_key(ENV_PATH, "L1_WS_RPC")
@@ -41,7 +41,7 @@ L1_WS_RPC = get_key(ENV_PATH, "L1_WS_RPC")
 # Deployment flags
 LOCAL_TEST = get_key(ENV_PATH, "LOCAL_TEST").lower() == "true"
 
-
+USE_NITRO_STACK = get_key(ENV_PATH, "USE_NITRO_STACK").lower() == "true"
 ARPA_EXISTS = (
     get_key(ENV_PATH, "ARPA_EXISTS").lower() == "true"
 )  # bool True if ARPA_EXISTS is true in .env
@@ -49,11 +49,11 @@ L2_ONLY = (
     get_key(ENV_PATH, "L2_ONLY").lower() == "true"
 )  # bool True if L2_ONLY is true in .env
 BASE_DEPLOYMENT = (
-    get_key(ENV_PATH, "OP_CHAIN_ID") == "8453"
-    or get_key(ENV_PATH, "OP_CHAIN_ID") == "84531"
+    get_key(ENV_PATH, "L2_CHAIN_ID") == "8453"
+    or get_key(ENV_PATH, "L2_CHAIN_ID") == "84531"
 )
-REDSTONE_DEPLOYMENT = get_key(ENV_PATH, "OP_CHAIN_ID") == "17001"
-LOOTCHAIN_DEPLOYMENT = get_key(ENV_PATH, "OP_CHAIN_ID") == "9088912"
+REDSTONE_DEPLOYMENT = get_key(ENV_PATH, "L2_CHAIN_ID") == "17001"
+LOOTCHAIN_DEPLOYMENT = get_key(ENV_PATH, "L2_CHAIN_ID") == "9088912"
 
 # Admin Private Key used to Relay Groups manually during L2_ONLY deployment
 ADMIN_PRIVATE_KEY = get_key(ENV_PATH, "ADMIN_PRIVATE_KEY")
@@ -61,7 +61,7 @@ VERBOSE_OUTPUT = get_key(ENV_PATH, "VERBOSE_OUTPUT").lower() == "true"
 HIDE_OUTPUT = not VERBOSE_OUTPUT  # if verbose_output = false, hide_output = true
 
 # Existing L1 Addresses
-EXISTING_OP_ARPA_ADDRESS = get_key(ENV_PATH, "EXISTING_OP_ARPA_ADDRESS")
+EXISTING_L2_ARPA_ADDRESS = get_key(ENV_PATH, "EXISTING_L2_ARPA_ADDRESS")
 EXISTING_L1_ARPA_ADDRESS = get_key(ENV_PATH, "EXISTING_L1_ARPA_ADDRESS")
 EXISTING_L1_STAKING_ADDRESS = get_key(ENV_PATH, "EXISTING_L1_STAKING_ADDRESS")
 EXISTING_L1_SERVICE_MANAGER_ADDRESS = get_key(
@@ -83,6 +83,15 @@ print(f"L2_CHAIN_ID: {L2_CHAIN_ID}")
 print(f"L2_RPC: {L2_RPC}")
 print(f"ARPA_EXISTS: {ARPA_EXISTS}")
 print(f"L2_ONLY: {L2_ONLY}")
+print(f"USE_NITRO_STACK: {USE_NITRO_STACK}")
+
+NITRO_CONTRACTS_DEPLOYMENT_BROADCAST_PATH = os.path.join(
+    CONTRACTS_DIR,
+    "broadcast",
+    "NitroControllerOracleLocalTest.s.sol",
+    L2_CHAIN_ID,
+    "run-latest.json",
+)
 
 OP_CONTRACTS_DEPLOYMENT_BROADCAST_PATH = os.path.join(
     CONTRACTS_DIR,
@@ -122,6 +131,9 @@ L1_TRANSACTION_PRIORITY_GAS_PRICE = get_key(
 L2_TRANSACTION_PRIORITY_GAS_PRICE = get_key(
     ENV_PATH, "L2_TRANSACTION_PRIORITY_GAS_PRICE"
 )
+
+ETHERSCAN_API_KEY = get_key(ENV_PATH, "ETHERSCAN_API_KEY")
+VERIFIER_URL = get_key(ENV_PATH, "VERIFIER_URL")
 
 
 def cprint(text: str, color: str = "green"):
@@ -182,10 +194,10 @@ def get_l1_addresses():
 
         l1_addresses = {**l1_controller_addresses}
 
-        l1_chain_op_stack_messenger_addresses = get_addresses_from_broadcast_json(
-            CREATE_AND_SET_OP_STACK_CHAIN_MESSENGER_BROADCAST_PATH
-        )
-        l1_addresses.update(l1_chain_op_stack_messenger_addresses)
+        # l1_chain_op_stack_messenger_addresses = get_addresses_from_broadcast_json(
+        #     CREATE_AND_SET_OP_STACK_CHAIN_MESSENGER_BROADCAST_PATH
+        # )
+        # l1_addresses.update(l1_chain_op_stack_messenger_addresses)
     else:
         l1_addresses = get_addresses_from_broadcast_json(
             L1_CONTRACTS_DEPLOYMENT_BROADCAST_PATH
@@ -203,14 +215,19 @@ def get_l1_addresses():
 
 
 def get_l2_addresses():
-    l2_addresses = get_addresses_from_broadcast_json(
-        OP_CONTRACTS_DEPLOYMENT_BROADCAST_PATH
-    )
+    if USE_NITRO_STACK:
+        l2_addresses = get_addresses_from_broadcast_json(
+            NITRO_CONTRACTS_DEPLOYMENT_BROADCAST_PATH
+        )
+    else:
+        l2_addresses = get_addresses_from_broadcast_json(
+            OP_CONTRACTS_DEPLOYMENT_BROADCAST_PATH
+        )
     l2_addresses.update(
         get_addresses_from_json(CONTRACTS_DEPLOYMENT_ADDRESSES_PATH)["L2"]
     )
     if ARPA_EXISTS:
-        l2_addresses["Arpa"] = EXISTING_OP_ARPA_ADDRESS
+        l2_addresses["Arpa"] = EXISTING_L2_ARPA_ADDRESS
     return l2_addresses
 
 
@@ -332,9 +349,19 @@ def deploy_contracts():
     # 1. Copy .env.example to .env, and load .env file for editing
     # run_command(["cp", ENV_EXAMPLE_PATH, ENV_PATH])
 
+    controller_oracle_address_key = (
+        "ControllerOracleWithNitroStack"
+        if USE_NITRO_STACK
+        else "ControllerOracleWithOPStack"
+    )
+
     # 2. Deploy L2 OPControllerOracleLocalTest contracts
-    print("Running Solidity Script: OPControllerOracleLocalTest on L2...")
-    cmd = f"forge script script/OPControllerOracleLocalTest.s.sol:OPControllerOracleLocalTestScript --fork-url {L2_RPC} --broadcast --priority-gas-price {L2_TRANSACTION_PRIORITY_GAS_PRICE}"
+    if USE_NITRO_STACK:
+        print("Running Solidity Script: NitroControllerOracleLocalTest on L2...")
+        cmd = f"forge script script/NitroControllerOracleLocalTest.s.sol:NitroControllerOracleLocalTestScript --fork-url {L2_RPC} --broadcast --priority-gas-price {L2_TRANSACTION_PRIORITY_GAS_PRICE} --verify --etherscan-api-key {ETHERSCAN_API_KEY} --verifier-url {VERIFIER_URL}"
+    else:
+        print("Running Solidity Script: OPControllerOracleLocalTest on L2...")
+        cmd = f"forge script script/OPControllerOracleLocalTest.s.sol:OPControllerOracleLocalTestScript --fork-url {L2_RPC} --broadcast --priority-gas-price {L2_TRANSACTION_PRIORITY_GAS_PRICE} --verify --etherscan-api-key {ETHERSCAN_API_KEY} --verifier-url {VERIFIER_URL}"
     if LOOTCHAIN_DEPLOYMENT:
         cmd = cmd + " --slow --legacy"
 
@@ -345,11 +372,15 @@ def deploy_contracts():
     # get L2 contract addresses from broadcast and update .env file
     l2_addresses = get_addresses_from_json(CONTRACTS_DEPLOYMENT_ADDRESSES_PATH)["L2"]
     if ARPA_EXISTS:
-        l2_addresses["Arpa"] = EXISTING_OP_ARPA_ADDRESS
+        l2_addresses["Arpa"] = EXISTING_L2_ARPA_ADDRESS
 
-    set_key(ENV_PATH, "OP_ADAPTER_ADDRESS", l2_addresses["Adapter"])
-    set_key(ENV_PATH, "OP_ARPA_ADDRESS", l2_addresses["Arpa"])
-    set_key(ENV_PATH, "OP_CONTROLLER_ORACLE_ADDRESS", l2_addresses["ControllerOracle"])
+    set_key(ENV_PATH, "L2_ADAPTER_ADDRESS", l2_addresses["Adapter"])
+    set_key(ENV_PATH, "L2_ARPA_ADDRESS", l2_addresses["Arpa"])
+    set_key(
+        ENV_PATH,
+        "L2_CONTROLLER_ORACLE_ADDRESS",
+        l2_addresses[controller_oracle_address_key],
+    )
 
     if not L2_ONLY:  # l2_only = false
         # 3. Deploy L1 ControllerLocalTest contracts
@@ -395,51 +426,52 @@ def deploy_contracts():
         set_key(ENV_PATH, "STAKING_ADDRESS", l1_addresses["Staking"])
         l1_controller_relayer = EXISTING_L1_CONTROLLER_RELAYER
 
-    # Deploy CreateAndSetChainMessenger script
-    #! Generalize by making a general "OPStackChainMessenger contract" and "CreateAndSetChainMessengerScript" script
+    # # Deploy CreateAndSetChainMessenger script
+    # print("Running Solidity Script: CreateAndSetOPStackChainMessenger on L1...")
+    # cmd = f"forge script script/CreateAndSetOPStackChainMessenger.s.sol:CreateAndSetOPStackChainMessengerScript --fork-url {L1_RPC} --broadcast --priority-gas-price {L1_TRANSACTION_PRIORITY_GAS_PRICE}"
 
-    # ! New
-    print("Running Solidity Script: CreateAndSetOPStackChainMessenger on L1...")
-    cmd = f"forge script script/CreateAndSetOPStackChainMessenger.s.sol:CreateAndSetOPStackChainMessengerScript --fork-url {L1_RPC} --broadcast --priority-gas-price {L1_TRANSACTION_PRIORITY_GAS_PRICE}"
-    cprint(cmd)
+    # #  --verify --etherscan-api-key {ETHERSCAN_API_KEY} --verifier-url {VERIFIER_URL}
+    # cprint(cmd)
 
-    run_command(
-        [cmd],
-        env={
-            "OP_L1_CROSS_DOMAIN_MESSENGER_ADDRESS": OP_L1_CROSS_DOMAIN_MESSENGER_ADDRESS,
-            "OP_CONTROLLER_ORACLE_ADDRESS": l2_addresses["ControllerOracle"],
-            "EXISTING_L1_CONTROLLER_RELAYER": l1_controller_relayer,
-        },
-        cwd=CONTRACTS_DIR,
-        capture_output=HIDE_OUTPUT,
-        shell=True,
-    )
+    # controller_oracle_address_key = "ControllerOracleWithNitroStack" if USE_NITRO_STACK else "ControllerOracleWithOPStack"
 
-    # ! New
-    l1_chain_op_stack_messenger_addresses = get_addresses_from_broadcast_json(
-        CREATE_AND_SET_OP_STACK_CHAIN_MESSENGER_BROADCAST_PATH
-    )
-    l1_addresses.update(l1_chain_op_stack_messenger_addresses)
+    # run_command(
+    #     [cmd],
+    #     env={
+    #         "OP_L1_CROSS_DOMAIN_MESSENGER_ADDRESS": OP_L1_CROSS_DOMAIN_MESSENGER_ADDRESS,
+    #         "L2_CONTROLLER_ORACLE_ADDRESS": l2_addresses[controller_oracle_address_key],
+    #         "EXISTING_L1_CONTROLLER_RELAYER": l1_controller_relayer,
+    #     },
+    #     cwd=CONTRACTS_DIR,
+    #     capture_output=HIDE_OUTPUT,
+    #     shell=True,
+    # )
 
-    set_key(
-        ENV_PATH, "L1_CHAIN_MESSENGER_ADDRESS", l1_addresses["OPStackChainMessenger"]
-    )
+    # # ! New
+    # l1_chain_op_stack_messenger_addresses = get_addresses_from_broadcast_json(
+    #     CREATE_AND_SET_OP_STACK_CHAIN_MESSENGER_BROADCAST_PATH
+    # )
+    # l1_addresses.update(l1_chain_op_stack_messenger_addresses)
+
+    # set_key(
+    #     ENV_PATH, "L1_CHAIN_MESSENGER_ADDRESS", l1_addresses["OPStackChainMessenger"]
+    # )
 
     # 4. deploy remaining contracts (Controller Oracle Init, StakeNodeLocalTest)
     print(
-        "Running Solidity Script: OPControllerOracleInitializationLocalTestScript on L2..."
+        "Running Solidity Script: L2ControllerOracleInitializationLocalTestScript on L2..."
     )
-    cmd = f"forge script script/OPControllerOracleInitializationLocalTest.s.sol:OPControllerOracleInitializationLocalTestScript --fork-url {L2_RPC} --broadcast --priority-gas-price {L2_TRANSACTION_PRIORITY_GAS_PRICE}"
+    cmd = f"forge script script/L2ControllerOracleInitializationLocalTest.s.sol:L2ControllerOracleInitializationLocalTestScript --fork-url {L2_RPC} --broadcast --priority-gas-price {L2_TRANSACTION_PRIORITY_GAS_PRICE} --verify --etherscan-api-key {ETHERSCAN_API_KEY} --verifier-url {VERIFIER_URL}"
     if LOOTCHAIN_DEPLOYMENT:
         cmd = cmd + " --slow --legacy"
     cprint(cmd)
     run_command(
         [cmd],
         env={
-            "OP_ADAPTER_ADDRESS": l2_addresses["Adapter"],
-            "OP_ARPA_ADDRESS": l2_addresses["Arpa"],
-            "OP_CONTROLLER_ORACLE_ADDRESS": l2_addresses["ControllerOracle"],
-            "L1_CHAIN_MESSENGER_ADDRESS": l1_addresses["OPStackChainMessenger"],
+            "L2_ADAPTER_ADDRESS": l2_addresses["Adapter"],
+            "L2_ARPA_ADDRESS": l2_addresses["Arpa"],
+            "L2_CONTROLLER_ORACLE_ADDRESS": l2_addresses[controller_oracle_address_key],
+            # "L1_CHAIN_MESSENGER_ADDRESS": l1_addresses["OPStackChainMessenger"],
         },
         cwd=CONTRACTS_DIR,
         capture_output=HIDE_OUTPUT,
@@ -481,10 +513,11 @@ def deploy_contracts():
 
     else:  # l2_only == True
         # determine number of available groups and relay groups
-        print(
-            "Determining number of available groups and relayinig those groups from L1 to L2..."
-        )
-        relay_groups(l2_addresses["ControllerOracle"])
+        # print(
+        #     "Determining number of available groups and relayinig those groups from L1 to L2..."
+        # )
+        # relay_groups(l2_addresses["ControllerOracle"])
+        print("Skipping group relaying as L2 only deployment...")
 
     # Print addresses to addresses.json in the current directory
     print_addresses()
@@ -694,8 +727,8 @@ def test_request_randomness():
         addresses = json.load(f)
         l1_addresses = addresses["L1 Addresses"]
         l2_addresses = addresses["L2 Addresses"]
-        # pprint(l1_addresses)
-        # pprint(l2_addresses)
+        pprint(l1_addresses)
+        pprint(l2_addresses)
 
     # Check group state
     print("L1 Group Info:")
@@ -704,29 +737,29 @@ def test_request_randomness():
         [cmd],
         shell=True,
     )
-    # print(l1_group_into)
+    print(l1_group_info)
 
-    print("Waiting for group to relay from L1 to L2...")
-    non_relayed_group = "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000001c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    # print("Waiting for group to relay from L1 to L2...")
+    # non_relayed_group = "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000018000000000000000000000000000000000000000000000000000000000000001a000000000000000000000000000000000000000000000000000000000000001c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
 
-    cmd = f"cast call {l2_addresses['ControllerOracle']} \"getGroup(uint256)\" 0 --rpc-url {L2_RPC}"
+    # cmd = f"cast call {l2_addresses['ControllerOracle']} \"getGroup(uint256)\" 0 --rpc-url {L2_RPC}"
 
-    cprint(cmd)
-    l2_group_info = wait_command(
-        [cmd],
-        wait_time=15,
-        max_attempts=10,
-        fail_value=non_relayed_group,
-        shell=True,
-    )
-    if l2_group_info:
-        print(f"Group relayed from L1 to L2!")
-        print("L2 Group Info:")
-        print(l2_group_info)
+    # cprint(cmd)
+    # l2_group_info = wait_command(
+    #     [cmd],
+    #     wait_time=15,
+    #     max_attempts=10,
+    #     fail_value=non_relayed_group,
+    #     shell=True,
+    # )
+    # if l2_group_info:
+    #     print(f"Group relayed from L1 to L2!")
+    #     print("L2 Group Info:")
+    #     print(l2_group_info)
 
-    ############################################
-    ###### L1 Request Randomness Testing #######
-    ############################################
+    # ############################################
+    # ###### L1 Request Randomness Testing #######
+    # ############################################
 
     # 1. Get L1 previous randomness
     l1_prev_randomness = get_last_randomness(l1_addresses["Adapter"], L1_RPC)
@@ -766,46 +799,46 @@ def test_request_randomness():
     ###### L2 Request Randomness Testing #######
     ############################################
 
-    # 1. Get last randomness
-    # get l2 previous randomness
-    l2_prev_randomness = get_last_randomness(l2_addresses["Adapter"], L2_RPC)
+    # # 1. Get last randomness
+    # # get l2 previous randomness
+    # l2_prev_randomness = get_last_randomness(l2_addresses["Adapter"], L2_RPC)
 
-    # 2. Deploy l2 user contract and request randomness
-    print("Deploying l2 user contract and requesting randomness...")
+    # # 2. Deploy l2 user contract and request randomness
+    # print("Deploying l2 user contract and requesting randomness...")
 
-    # forge script script/OPGetRandomNumberLocalTest.s.sol:OPGetRandomNumberLocalTestScript --fork-url http://localhost:9545 --broadcast
-    cmd = f"forge script script/OPGetRandomNumberLocalTest.s.sol:OPGetRandomNumberLocalTestScript --fork-url {L2_RPC} --broadcast --priority-gas-price {L2_TRANSACTION_PRIORITY_GAS_PRICE}"
-    if LOOTCHAIN_DEPLOYMENT:
-        cmd = cmd + " --slow --legacy"
-    cprint(cmd)
-    run_command(
-        [cmd],
-        env={
-            "OP_ADAPTER_ADDRESS": l2_addresses["Adapter"],
-        },
-        cwd=CONTRACTS_DIR,
-        capture_output=HIDE_OUTPUT,
-        shell=True,
-    )
-    l2_cur_randomness = get_last_randomness(l2_addresses["Adapter"], L2_RPC)
+    # cmd = f"forge script script/L2GetRandomNumberLocalTest.s.sol:L2GetRandomNumberLocalTestScript --fork-url {L2_RPC} --broadcast --priority-gas-price {L2_TRANSACTION_PRIORITY_GAS_PRICE}"
+    # # --verify --etherscan-api-key {ETHERSCAN_API_KEY} --verifier-url {VERIFIER_URL}"
+    # if LOOTCHAIN_DEPLOYMENT:
+    #     cmd = cmd + " --slow --legacy"
+    # cprint(cmd)
+    # run_command(
+    #     [cmd],
+    #     env={
+    #         "L2_ADAPTER_ADDRESS": l2_addresses["Adapter"],
+    #     },
+    #     cwd=CONTRACTS_DIR,
+    #     capture_output=HIDE_OUTPUT,
+    #     shell=True,
+    # )
+    # l2_cur_randomness = get_last_randomness(l2_addresses["Adapter"], L2_RPC)
 
-    # 3. Check if randomness is updated
+    # # 3. Check if randomness is updated
 
-    print("Waiting for randomness to be updated...")
-    cmd = f'cast call {l2_addresses["Adapter"]} "getLastRandomness()(uint256)" --rpc-url {L2_RPC}'
-    if LOOTCHAIN_DEPLOYMENT:
-        cmd = cmd + " --slow --legacy"
-    cprint(cmd)
-    l2_cur_randomness = wait_command(
-        [cmd],
-        wait_time=15,
-        max_attempts=20,
-        fail_value=l2_prev_randomness,
-        shell=True,
-    )
-    print(f"\nOld L2 randomness: {l2_prev_randomness}")
-    print(f"New L2 randomness: {l2_cur_randomness}")
-    print("L2 Requested Randomness succesfully!\n")
+    # print("Waiting for randomness to be updated...")
+    # cmd = f'cast call {l2_addresses["Adapter"]} "getLastRandomness()(uint256)" --rpc-url {L2_RPC}'
+    # if LOOTCHAIN_DEPLOYMENT:
+    #     cmd = cmd + " --slow --legacy"
+    # cprint(cmd)
+    # l2_cur_randomness = wait_command(
+    #     [cmd],
+    #     wait_time=15,
+    #     max_attempts=20,
+    #     fail_value=l2_prev_randomness,
+    #     shell=True,
+    # )
+    # print(f"\nOld L2 randomness: {l2_prev_randomness}")
+    # print(f"New L2 randomness: {l2_cur_randomness}")
+    # print("L2 Requested Randomness succesfully!\n")
 
 
 def print_addresses():
@@ -917,7 +950,7 @@ def update_group(controller_address, controller_oracle_address, group_index):
     print(f"Admin wallet address: {admin_wallet_address}")
 
     # construct the forge script
-    cmd = f"forge script script/updateGroup.s.sol:GetGroupFromL1AndUpdateL2Script --broadcast --priority-gas-price {L1_TRANSACTION_PRIORITY_GAS_PRICE}"
+    cmd = f"forge script script/updateGroup.s.sol:GetGroupFromL1AndUpdateL2Script --broadcast --priority-gas-price {L2_TRANSACTION_PRIORITY_GAS_PRICE}"
 
     cprint(cmd)
 
@@ -927,9 +960,9 @@ def update_group(controller_address, controller_oracle_address, group_index):
             "ADMIN_PRIVATE_KEY": ADMIN_PRIVATE_KEY,
             "ADMIN_ADDRESS": admin_wallet_address,
             "CONTROLLER_ADDRESS": controller_address,
-            "OP_CONTROLLER_ORACLE_ADDRESS": controller_oracle_address,
+            "L2_CONTROLLER_ORACLE_ADDRESS": controller_oracle_address,
             "L1_RPC": L1_RPC,
-            "OP_RPC": L2_RPC,
+            "L2_RPC": L2_RPC,
         },
         cwd=CONTRACTS_DIR,
         shell=True,
@@ -938,23 +971,23 @@ def update_group(controller_address, controller_oracle_address, group_index):
 
 def main():
     # # Main deployment script
-    deploy_contracts()
-    deploy_nodes()
+    # deploy_contracts()
+    # deploy_nodes()
     test_request_randomness()
 
     ## For L2 only deployments, use the following prior to the first deployment.
     # deploy_controller_relayer()
 
     ## Manually call relayGroups(L2controllerOracleAddress)
-    # relay_groups("0x901105C43C7f0e421b33c9D1DaA25f54076F6563")
+    # relay_groups("0xDEc250D24ECf7475De51C51371e4F73b204c5b84")
 
     ## Get public/private key info from node mnemonic
     # print_node_key_info()
 
     ## Manually Update Group from L1 to L2
     # update_group(
-    #     "0x647c919280A1cE898cBf8BD72c8a912165B4f70a",  # controller_address
-    #     "0x6789dD361406E3DFC3a52BAfFD4C05958d25deDe",  # controller_oracle_address
+    #     "0x52071980a3a5A77611A301D5453a739aeAe0E482",  # controller_address
+    #     "0x55B6e2140B4eaA094c917C8798A3529d594e38a2",  # controller_oracle_address
     #     0,  # group_index
     # )
 

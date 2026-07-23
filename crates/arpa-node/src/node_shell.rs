@@ -22,9 +22,9 @@ use arpa_contract_client::ethers::{
 use arpa_contract_client::node_registry::{NodeRegistryTransactions, NodeRegistryViews};
 use arpa_contract_client::{ServiceClient, TransactionCaller, ViewCaller};
 use arpa_core::{
-    address_to_string, build_client, build_wallet_from_config, pad_to_bytes32_fixed_bytes, Account,
-    Config, ConfigError, GeneralMainChainIdentity, GeneralRelayedChainIdentity, Keystore,
-    ProviderClientWithSigner,
+    address_to_string, build_wallet_from_config, build_websocket_client,
+    pad_to_bytes32_fixed_bytes, Account, Config, ConfigError, GeneralMainChainIdentity,
+    GeneralRelayedChainIdentity, Keystore, ProviderClientWithSigner,
 };
 use arpa_dal::NodeInfoFetcher;
 use arpa_node::context::ChainIdentityHandlerType;
@@ -1039,8 +1039,10 @@ async fn call<PC: Curve>(
                 .build_adapter_client(context.wallet.address());
 
             let adapter_contract =
-                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(&client)
-                    .await?;
+                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(
+                    &client,
+                )
+                .await?;
 
             let filter = adapter_contract
                 .RandomnessRequestResult_filter()
@@ -1080,8 +1082,10 @@ async fn call<PC: Curve>(
                 .build_adapter_client(context.chain_identity(*chain_id)?.get_id_address());
 
             let adapter_contract =
-                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(&client)
-                    .await?;
+                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(
+                    &client,
+                )
+                .await?;
 
             let filter = adapter_contract
                 .RandomnessRequestResult_filter()
@@ -1233,8 +1237,10 @@ async fn call<PC: Curve>(
                 .build_adapter_client(context.wallet.address());
 
             let adapter_contract =
-                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(&client)
-                    .await?;
+                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(
+                    &client,
+                )
+                .await?;
 
             let Adapter::getAdapterConfigReturn {
                 minimumRequestConfirmations,
@@ -1273,8 +1279,10 @@ async fn call<PC: Curve>(
                 .build_adapter_client(context.wallet.address());
 
             let adapter_contract =
-                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(&client)
-                    .await?;
+                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(
+                    &client,
+                )
+                .await?;
 
             let last_assigned_group_index = AdapterClient::call_contract_view(
                 *chain_id,
@@ -1297,8 +1305,10 @@ async fn call<PC: Curve>(
                 .build_adapter_client(context.wallet.address());
 
             let adapter_contract =
-                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(&client)
-                    .await?;
+                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(
+                    &client,
+                )
+                .await?;
 
             let randomness_count = AdapterClient::call_contract_view(
                 *chain_id,
@@ -1396,8 +1406,10 @@ async fn call<PC: Curve>(
                 .build_adapter_client(context.wallet.address());
 
             let adapter_contract =
-                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(&client)
-                    .await?;
+                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(
+                    &client,
+                )
+                .await?;
 
             let Adapter::getCumulativeDataReturn {
                 _0: cumulative_flat_fee,
@@ -1431,8 +1443,10 @@ async fn call<PC: Curve>(
                 .build_adapter_client(context.wallet.address());
 
             let adapter_contract =
-                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(&client)
-                    .await?;
+                ServiceClient::<AdapterInstance<ProviderClientWithSigner>>::prepare_service_client(
+                    &client,
+                )
+                .await?;
 
             let r_id = sub_matches.get_one::<String>("request-id").unwrap();
 
@@ -1591,7 +1605,7 @@ async fn main() -> anyhow::Result<()> {
         Duration::from_millis(config.get_time_limits().provider_polling_interval_millis),
     );
 
-    let client = build_client(
+    let client = build_websocket_client(
         wallet.clone(),
         config.get_main_chain_id(),
         ws_connect.clone(),
@@ -1601,7 +1615,7 @@ async fn main() -> anyhow::Result<()> {
     let main_chain_identity = GeneralMainChainIdentity::new(
         config.get_main_chain_id(),
         wallet.clone(),
-        ws_connect,
+        Some(ws_connect),
         client,
         config.get_provider_endpoint().to_owned(),
         config
@@ -1635,7 +1649,7 @@ async fn main() -> anyhow::Result<()> {
                     .provider_polling_interval_millis,
             ),
         );
-        let client = build_client(
+        let client = build_websocket_client(
             wallet.clone(),
             relayed_chain.get_chain_id(),
             ws_connect.clone(),
@@ -1645,7 +1659,7 @@ async fn main() -> anyhow::Result<()> {
         let relayed_chain_identity = GeneralRelayedChainIdentity::new(
             relayed_chain.get_chain_id(),
             wallet.clone(),
-            ws_connect,
+            Some(ws_connect),
             client,
             relayed_chain.get_provider_endpoint().to_string(),
             relayed_chain

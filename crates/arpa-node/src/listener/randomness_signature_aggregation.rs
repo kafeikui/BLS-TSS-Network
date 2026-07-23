@@ -126,7 +126,7 @@ mod tests {
     use alloy::providers::WsConnect;
     use alloy::signers::local::PrivateKeySigner;
     use arpa_core::{
-        build_client, random_address, ComponentTaskType, Config, DKGStatus,
+        build_websocket_client, random_address, ComponentTaskType, Config, DKGStatus,
         FixedIntervalRetryDescriptor, GeneralMainChainIdentity, ListenerType,
         RandomnessRequestType, RandomnessTask, PLACEHOLDER_ADDRESS,
     };
@@ -311,7 +311,7 @@ mod tests {
 
         let ws_connect = WsConnect::new(avnil.ws_endpoint());
 
-        let client = build_client(
+        let client = build_websocket_client(
             fake_wallet.clone(),
             config.get_main_chain_id(),
             ws_connect.clone(),
@@ -329,7 +329,7 @@ mod tests {
         let main_chain_identity = GeneralMainChainIdentity::new(
             config.get_main_chain_id(),
             fake_wallet,
-            ws_connect,
+            Some(ws_connect.clone()),
             client,
             avnil.ws_endpoint(),
             random_address(),

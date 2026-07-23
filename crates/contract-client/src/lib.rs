@@ -310,6 +310,14 @@ pub mod controller {
 
     #[async_trait]
     pub trait ControllerLogs {
+        async fn watch_dkg_task<
+            C: FnMut(DKGTask) -> F + Send,
+            F: Future<Output = ContractClientResult<()>> + Send,
+        >(
+            &self,
+            cb: C,
+        ) -> ContractClientResult<()>;
+
         async fn subscribe_dkg_task<
             C: FnMut(DKGTask) -> F + Send,
             F: Future<Output = ContractClientResult<()>> + Send,
@@ -470,6 +478,14 @@ pub mod adapter {
 
     #[async_trait]
     pub trait AdapterLogs {
+        async fn watch_randomness_task<
+            C: FnMut(RandomnessTask) -> F + Send,
+            F: Future<Output = ContractClientResult<()>> + Send,
+        >(
+            &self,
+            cb: C,
+        ) -> ContractClientResult<()>;
+
         async fn subscribe_randomness_task<
             C: FnMut(RandomnessTask) -> F + Send,
             F: Future<Output = ContractClientResult<()>> + Send,
@@ -496,6 +512,14 @@ pub mod provider {
 
     #[async_trait]
     pub trait BlockFetcher {
+        async fn watch_new_block_height<
+            C: FnMut(usize) -> F + Send,
+            F: Future<Output = ContractClientResult<()>> + Send,
+        >(
+            &self,
+            cb: C,
+        ) -> ContractClientResult<()>;
+
         async fn subscribe_new_block_height<
             C: FnMut(usize) -> F + Send,
             F: Future<Output = ContractClientResult<()>> + Send,

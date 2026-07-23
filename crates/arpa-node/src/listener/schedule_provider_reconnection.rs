@@ -165,7 +165,7 @@ mod tests {
     use alloy::providers::WsConnect;
     use alloy::signers::local::PrivateKeySigner;
     use alloy::signers::Signer;
-    use arpa_core::build_client;
+    use arpa_core::build_websocket_client;
     use arpa_core::random_address;
     use arpa_core::{
         Config, FixedIntervalRetryDescriptor, GeneralMainChainIdentity, ListenerType,
@@ -255,12 +255,13 @@ mod tests {
         let config = Config::default();
 
         let client =
-            build_client(wallet_with_chain_id.clone(), chain_id, ws_connect.clone()).await?;
+            build_websocket_client(wallet_with_chain_id.clone(), chain_id, ws_connect.clone())
+                .await?;
 
         let chain_identity = GeneralMainChainIdentity::new(
             chain_id,
             wallet_with_chain_id.clone(),
-            ws_connect.clone(),
+            Some(ws_connect.clone()),
             client,
             anvil.ws_endpoint(),
             controller_address,

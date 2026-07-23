@@ -119,7 +119,7 @@ mod tests {
     use alloy::sol;
     use anyhow::anyhow;
     use arpa_core::{
-        build_client, random_address, Config, DKGStatus, FixedIntervalRetryDescriptor,
+        build_websocket_client, random_address, Config, DKGStatus, FixedIntervalRetryDescriptor,
         GeneralMainChainIdentity, Group, ListenerType, Member, ProviderClientWithSigner,
     };
     use arpa_dal::{cache::InMemoryGroupInfoCache, GroupInfoHandler};
@@ -224,7 +224,7 @@ mod tests {
         let id_address = wallet.address();
         let chain_id = anvil.chain_id();
 
-        let client = build_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
+        let client = build_websocket_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
 
         let config = Config::default();
 
@@ -237,7 +237,7 @@ mod tests {
         let chain_identity = GeneralMainChainIdentity::new(
             chain_id,
             wallet.clone(),
-            ws_connect.clone(),
+            Some(ws_connect.clone()),
             client.clone(),
             anvil.ws_endpoint(),
             *controller.address(),

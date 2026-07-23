@@ -12,9 +12,9 @@ contract GetGroupFromL1AndUpdateL2Script is Script {
         // get env variables
         address _commiterAddress = vm.envAddress("ADMIN_ADDRESS");
         address _controllerAddress = vm.envAddress("CONTROLLER_ADDRESS");
-        address ControllerOracleAddress = vm.envAddress("OP_CONTROLLER_ORACLE_ADDRESS");
+        address ControllerOracleAddress = vm.envAddress("L2_CONTROLLER_ORACLE_ADDRESS");
         string memory _l1RPC = vm.envString("L1_RPC");
-        string memory _l2RPC = vm.envString("OP_RPC");
+        string memory _l2RPC = vm.envString("L2_RPC");
 
         // create and select fork for L1
         vm.createSelectFork(_l1RPC);
@@ -24,7 +24,7 @@ contract GetGroupFromL1AndUpdateL2Script is Script {
         // create and select fork for L2
         vm.createSelectFork(_l2RPC);
         vm.startBroadcast(_deployerPrivateKey);
-        group.epoch = group.epoch + 2; // this is needed, otherwise you get GroupObsolete error.
+        // group.epoch = group.epoch + 2; // this is needed, otherwise you get GroupObsolete error.
         // update L2 Group with L1 Group Info
         ControllerOracle(ControllerOracleAddress).updateGroup(_commiterAddress, group);
         group = ControllerOracle(ControllerOracleAddress).getGroup(0);

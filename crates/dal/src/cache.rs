@@ -462,8 +462,8 @@ impl<C: Curve> GroupInfoUpdater<C> for InMemoryGroupInfoCache<C> {
             return Err(GroupError::GroupEpochObsolete(self.group.epoch).into());
         }
 
-        if self.group.state {
-            return Err(GroupError::GroupAlreadyReady.into());
+        if !self.group.state {
+            return Err(GroupError::GroupNotReady.into());
         }
 
         // find members with the self_id_address and update index

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.18;
 
 import {Deployer} from "./Deployer.s.sol";
-import {ControllerOracleWithOPStack} from "../src/ControllerOracleWithOPStack.sol";
+import {ControllerOracleWithNitroStack} from "../src/ControllerOracleWithNitroStack.sol";
 import {Adapter} from "../src/Adapter.sol";
 import {IAdapterOwner} from "../src/interfaces/IAdapterOwner.sol";
 import {Arpa} from "./ArpaLocalTest.sol";
@@ -10,12 +10,11 @@ import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC1967Proxy} from "openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 // solhint-disable-next-line max-states-count
-contract OPControllerOracleLocalTestScript is Deployer {
+contract NitroControllerOracleLocalTestScript is Deployer {
     uint256 internal _deployerPrivateKey = vm.envUint("ADMIN_PRIVATE_KEY");
 
     uint256 internal _lastOutput = vm.envUint("LAST_OUTPUT");
     address internal _arpaAddress = vm.envAddress("EXISTING_L2_ARPA_ADDRESS");
-    address internal _opL2CrossDomainMessengerAddress = vm.envAddress("OP_L2_CROSS_DOMAIN_MESSENGER_ADDRESS");
 
     uint16 internal _minimumRequestConfirmations = uint16(vm.envUint("MINIMUM_REQUEST_CONFIRMATIONS"));
     uint32 internal _maxGasLimit = uint32(vm.envUint("MAX_GAS_LIMIT"));
@@ -43,7 +42,7 @@ contract OPControllerOracleLocalTestScript is Deployer {
     bool internal _arpaExists = vm.envBool("ARPA_EXISTS");
 
     function run() external {
-        ControllerOracleWithOPStack controllerOracleImpl;
+        ControllerOracleWithNitroStack controllerOracleImpl;
         ERC1967Proxy controllerOracle;
         Adapter adapterImpl;
         ERC1967Proxy adapter;
@@ -60,20 +59,15 @@ contract OPControllerOracleLocalTestScript is Deployer {
         }
 
         vm.broadcast(_deployerPrivateKey);
-        controllerOracleImpl = new ControllerOracleWithOPStack();
+        controllerOracleImpl = new ControllerOracleWithNitroStack();
         _addDeploymentAddress(Network.L2, "ControllerOracleImpl", address(controllerOracleImpl));
 
         vm.broadcast(_deployerPrivateKey);
         controllerOracle = new ERC1967Proxy(
             address(controllerOracleImpl),
-            abi.encodeWithSignature(
-                "initialize(address,address,uint256)",
-                address(_arpaAddress),
-                address(_opL2CrossDomainMessengerAddress),
-                _lastOutput
-            )
+            abi.encodeWithSignature("initialize(address,uint256)", address(_arpaAddress), _lastOutput)
         );
-        _addDeploymentAddress(Network.L2, "ControllerOracleWithOPStack", address(controllerOracle));
+        _addDeploymentAddress(Network.L2, "ControllerOracleWithNitroStack", address(controllerOracle));
 
         vm.broadcast(_deployerPrivateKey);
         adapterImpl = new Adapter();

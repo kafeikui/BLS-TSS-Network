@@ -22,11 +22,12 @@ use alloy::{
 use arpa_core::{
     ChainIdentity, DKGTask, ExponentialBackoffRetryDescriptor, GeneralMainChainIdentity,
     GeneralRelayedChainIdentity, Group, MainChainIdentity, ProviderClientWithSigner,
+    DEFAULT_PROVIDER_EVENT_POLLING_INTERVAL_MILLIS,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use log::info;
-use std::future::Future;
+use std::{future::Future, time::Duration};
 use threshold_bls::group::Curve;
 
 sol! {
@@ -209,6 +210,59 @@ impl<C: Curve> ControllerViews<C> for ControllerClient {
 
 #[async_trait]
 impl ControllerLogs for ControllerClient {
+    async fn watch_dkg_task<
+        C: FnMut(DKGTask) -> F + Send,
+        F: Future<Output = ContractClientResult<()>> + Send,
+    >(
+        &self,
+        mut cb: C,
+    ) -> ContractClientResult<()> {
+        let contract = Controller::new(self.controller_address, self.client.clone());
+
+        let mut watcher = contract
+            .DkgTask_filter()
+            .from_block(BlockNumberOrTag::Latest)
+            .watch()
+            .await?;
+        watcher.poller.set_poll_interval(Duration::from_millis(
+            DEFAULT_PROVIDER_EVENT_POLLING_INTERVAL_MILLIS,
+        ));
+        let mut stream = watcher.into_stream();
+
+        while let Some(Ok(evt)) = stream.next().await {
+            let (
+                ContractDkgTask {
+                    globalEpoch: _,
+                    groupIndex,
+                    groupEpoch,
+                    size,
+                    threshold,
+                    members,
+                    assignmentBlockHeight: _,
+                    coordinatorAddress,
+                },
+                meta,
+            ) = evt;
+
+            info!(
+                "Received DKG task: group_index: {}, epoch: {}, size: {}, threshold: {}, members: {:?}, coordinator_address: {}, block_number: {}",
+                groupIndex, groupEpoch, size, threshold, members, coordinatorAddress, meta.block_number.unwrap_or(0)
+            );
+
+            let task = DKGTask {
+                group_index: groupIndex.to::<usize>(),
+                epoch: groupEpoch.to::<usize>(),
+                size: size.to::<usize>(),
+                threshold: threshold.to::<usize>(),
+                members,
+                assignment_block_height: meta.block_number.unwrap_or(0) as usize,
+                coordinator_address: coordinatorAddress,
+            };
+            cb(task).await?;
+        }
+        Err(ContractClientError::FetchingDkgTaskError)
+    }
+
     async fn subscribe_dkg_task<
         C: FnMut(DKGTask) -> F + Send,
         F: Future<Output = ContractClientResult<()>> + Send,

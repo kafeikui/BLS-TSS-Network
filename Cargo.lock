@@ -1411,7 +1411,7 @@ dependencies = [
 
 [[package]]
 name = "arpa-contract-client"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "alloy",
  "anyhow",
@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "arpa-core"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "alloy",
  "anyhow",
@@ -1460,7 +1460,7 @@ dependencies = [
 
 [[package]]
 name = "arpa-dal"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "alloy",
  "anyhow",
@@ -1479,7 +1479,7 @@ dependencies = [
 
 [[package]]
 name = "arpa-log"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "anyhow",
  "arpa-log-impl",
@@ -1495,7 +1495,7 @@ dependencies = [
 
 [[package]]
 name = "arpa-log-impl"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1504,7 +1504,7 @@ dependencies = [
 
 [[package]]
 name = "arpa-node"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "actix-web",
  "alloy",
@@ -1551,7 +1551,7 @@ dependencies = [
 
 [[package]]
 name = "arpa-sqlite-db"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "alloy",
  "anyhow",
@@ -1576,7 +1576,7 @@ dependencies = [
 
 [[package]]
 name = "arpa-user-cli"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "alloy",
  "anyhow",
@@ -2858,7 +2858,7 @@ dependencies = [
 
 [[package]]
 name = "dkg-core"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "async-trait",
  "bincode",
@@ -2964,7 +2964,7 @@ dependencies = [
 
 [[package]]
 name = "entity"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "sea-orm",
  "serde",
@@ -4286,7 +4286,7 @@ checksum = "6c8640c5d730cb13ebd907d8d04b52f55ac9a2eec55b440c8892f40d56c76c1d"
 
 [[package]]
 name = "migration"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "async-std",
  "entity",
@@ -6995,7 +6995,7 @@ dependencies = [
 
 [[package]]
 name = "threshold-bls"
-version = "0.4.0-alpha.1"
+version = "0.4.0-alpha.2"
 dependencies = [
  "alloy",
  "ark-bls12-381",

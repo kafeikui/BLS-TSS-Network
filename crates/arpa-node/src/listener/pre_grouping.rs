@@ -9,7 +9,7 @@ use alloy::providers::Provider;
 use arpa_contract_client::controller::ControllerLogs;
 use arpa_core::{
     log::{build_task_related_payload, LogType},
-    ListenerDescriptor, TaskType,
+    DKGTask, ListenerDescriptor, TaskType,
 };
 use arpa_dal::GroupInfoHandler;
 use async_trait::async_trait;
@@ -64,55 +64,57 @@ impl<PC: Curve + Sync + Send> Listener for PreGroupingListener<PC> {
         let client = self.chain_identity.read().await.build_controller_client();
         let self_id_address = self.chain_identity.read().await.get_id_address();
 
-        client
-            .subscribe_dkg_task(move |dkg_task| {
-                let group_cache = self.group_cache.clone();
-                let eq = self.eq.clone();
+        let callback = move |dkg_task: DKGTask| {
+            let group_cache = self.group_cache.clone();
+            let eq = self.eq.clone();
 
-                async move {
-                    let chain_id = self.listener_descriptor.chain_id;
+            async move {
+                let chain_id = self.listener_descriptor.chain_id;
 
-                    if let Some((node_index, _)) = dkg_task
-                        .members
-                        .iter()
-                        .enumerate()
-                        .find(|(_, id_address)| **id_address == self_id_address)
-                    {
-                        let cache_index = group_cache.read().await.get_index().unwrap_or(0);
+                if let Some((node_index, _)) = dkg_task
+                    .members
+                    .iter()
+                    .enumerate()
+                    .find(|(_, id_address)| **id_address == self_id_address)
+                {
+                    let cache_index = group_cache.read().await.get_index().unwrap_or(0);
 
-                        let cache_epoch = group_cache.read().await.get_epoch().unwrap_or(0);
+                    let cache_epoch = group_cache.read().await.get_epoch().unwrap_or(0);
 
-                        if cache_index != dkg_task.group_index || cache_epoch != dkg_task.epoch {
-                            info!(
-                                "{}",
-                                build_task_related_payload(
-                                    LogType::TaskReceived,
-                                    "DKG grouping task received.",
-                                    chain_id,
-                                    &[],
-                                    TaskType::DKG,
-                                    json!(dkg_task),
-                                    None
-                                )
-                            );
+                    if cache_index != dkg_task.group_index || cache_epoch != dkg_task.epoch {
+                        info!(
+                            "{}",
+                            build_task_related_payload(
+                                LogType::TaskReceived,
+                                "DKG grouping task received.",
+                                chain_id,
+                                &[],
+                                TaskType::DKG,
+                                json!(dkg_task),
+                                None
+                            )
+                        );
 
-                            let self_index = node_index;
+                        let self_index = node_index;
 
-                            eq.read()
-                                .await
-                                .publish(NewDKGTask {
-                                    chain_id,
-                                    dkg_task,
-                                    self_index,
-                                })
-                                .await;
-                        }
+                        eq.read()
+                            .await
+                            .publish(NewDKGTask {
+                                chain_id,
+                                dkg_task,
+                                self_index,
+                            })
+                            .await;
                     }
-                    Ok(())
                 }
-            })
-            .await?;
-
+                Ok(())
+            }
+        };
+        if self.chain_identity.read().await.supports_websocket() {
+            client.subscribe_dkg_task(callback).await?;
+        } else {
+            client.watch_dkg_task(callback).await?;
+        }
         Ok(())
     }
 
@@ -149,7 +151,7 @@ mod tests {
     use alloy::sol;
     use anyhow::anyhow;
     use arpa_core::{
-        build_client, random_address, Config, DKGTask, FixedIntervalRetryDescriptor,
+        build_websocket_client, random_address, Config, DKGTask, FixedIntervalRetryDescriptor,
         GeneralMainChainIdentity, ListenerType, ProviderClientWithSigner,
     };
     use arpa_dal::{cache::InMemoryGroupInfoCache, GroupInfoHandler};
@@ -184,7 +186,8 @@ mod tests {
             let node_registry_address = random_address();
             let config = Config::default();
             let ws_connect = WsConnect::new(anvil.ws_endpoint());
-            let client = build_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
+            let client =
+                build_websocket_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
 
             let mock_controller = MockController::deploy(client.clone(), node_registry_address)
                 .await
@@ -194,7 +197,7 @@ mod tests {
             let chain_identity = GeneralMainChainIdentity::new(
                 chain_id,
                 wallet.clone(),
-                ws_connect,
+                Some(ws_connect.clone()),
                 client.clone(),
                 anvil.ws_endpoint(),
                 controller_address,

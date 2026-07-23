@@ -155,7 +155,7 @@ mod tests {
     use alloy::sol;
     use anyhow::anyhow;
     use arpa_core::{
-        build_client, random_address, Config, FixedIntervalRetryDescriptor,
+        build_websocket_client, random_address, Config, FixedIntervalRetryDescriptor,
         GeneralMainChainIdentity, ListenerType, ProviderClientWithSigner, RandomnessRequestType,
     };
     use arpa_dal::cache::{InMemoryBLSTasksQueue, InMemoryBlockInfoCache, InMemoryGroupInfoCache};
@@ -497,7 +497,7 @@ mod tests {
         let chain_id = anvil.chain_id();
         println!("Chain ID: {}", chain_id);
 
-        let client = build_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
+        let client = build_websocket_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
 
         let request_id1 = [1u8; 32];
         let request_id2 = [2u8; 32];
@@ -517,7 +517,7 @@ mod tests {
         let chain_identity = GeneralMainChainIdentity::new(
             chain_id,
             wallet.clone(),
-            ws_connect.clone(),
+            Some(ws_connect.clone()),
             client.clone(),
             anvil.ws_endpoint(),
             controller_address,

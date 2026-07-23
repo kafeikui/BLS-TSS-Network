@@ -17,13 +17,14 @@ use alloy::{
 use arpa_core::{
     pad_to_bytes32, ChainIdentity, ExponentialBackoffRetryDescriptor, GeneralMainChainIdentity,
     GeneralRelayedChainIdentity, PartialSignature, ProviderClientWithSigner, RandomnessRequestType,
-    RandomnessTask, DEFAULT_MINIMUM_THRESHOLD, FULFILL_RANDOMNESS_GAS_EXCEPT_CALLBACK,
-    RANDOMNESS_REWARD_GAS, VERIFICATION_GAS_OVER_MINIMUM_THRESHOLD,
+    RandomnessTask, DEFAULT_MINIMUM_THRESHOLD, DEFAULT_PROVIDER_EVENT_POLLING_INTERVAL_MILLIS,
+    FULFILL_RANDOMNESS_GAS_EXCEPT_CALLBACK, RANDOMNESS_REWARD_GAS,
+    VERIFICATION_GAS_OVER_MINIMUM_THRESHOLD,
 };
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use log::info;
-use std::{collections::BTreeMap, future::Future};
+use std::{collections::BTreeMap, future::Future, time::Duration};
 use threshold_bls::poly::Eval;
 
 sol! {
@@ -225,6 +226,64 @@ impl AdapterViews for AdapterClient {
 
 #[async_trait]
 impl AdapterLogs for AdapterClient {
+    async fn watch_randomness_task<
+        C: FnMut(RandomnessTask) -> F + Send,
+        F: Future<Output = ContractClientResult<()>> + Send,
+    >(
+        &self,
+        mut cb: C,
+    ) -> ContractClientResult<()> {
+        let contract = Adapter::new(self.adapter_address, self.client.clone());
+
+        let mut watcher = contract
+            .RandomnessRequest_filter()
+            .from_block(BlockNumberOrTag::Latest)
+            .watch()
+            .await?;
+        watcher.poller.set_poll_interval(Duration::from_millis(
+            DEFAULT_PROVIDER_EVENT_POLLING_INTERVAL_MILLIS,
+        ));
+        let mut stream = watcher.into_stream();
+
+        while let Some(Ok(evt)) = stream.next().await {
+            let (
+                ContractRandomnessRequest {
+                    requestId,
+                    subId,
+                    groupIndex,
+                    requestType,
+                    params,
+                    sender,
+                    seed,
+                    requestConfirmations,
+                    callbackGasLimit,
+                    callbackMaxGasPrice,
+                    estimatedPayment: _,
+                },
+                meta,
+            ) = evt;
+
+            info!( "Received randomness task: chain_id: {}, group_index: {}, request_id: {}, sender: {:?}, sub_id: {}, seed: {}, request_confirmations: {}, callback_gas_limit: {}, callback_max_gas_price: {}, block_number: {}",
+                self.chain_id, groupIndex, format!("0x{}", hex::encode(requestId)), sender, subId, seed, requestConfirmations, callbackGasLimit, callbackMaxGasPrice, meta.block_number.unwrap_or(0));
+
+            let task = RandomnessTask {
+                request_id: requestId.to_vec(),
+                subscription_id: subId,
+                group_index: groupIndex,
+                request_type: RandomnessRequestType::from(requestType),
+                params: params.to_vec(),
+                requester: sender,
+                seed,
+                request_confirmations: requestConfirmations,
+                callback_gas_limit: callbackGasLimit,
+                callback_max_gas_price: callbackMaxGasPrice.to::<u128>(),
+                assignment_block_height: meta.block_number.unwrap_or(0) as usize,
+            };
+            cb(task).await?;
+        }
+        Err(ContractClientError::FetchingRandomnessTaskError)
+    }
+
     async fn subscribe_randomness_task<
         C: FnMut(RandomnessTask) -> F + Send,
         F: Future<Output = ContractClientResult<()>> + Send,

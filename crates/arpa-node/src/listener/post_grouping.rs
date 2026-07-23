@@ -132,7 +132,7 @@ mod tests {
     use alloy::sol;
     use anyhow::anyhow;
     use arpa_core::{
-        build_client, random_address, Config, DKGStatus, FixedIntervalRetryDescriptor,
+        build_websocket_client, random_address, Config, DKGStatus, FixedIntervalRetryDescriptor,
         GeneralMainChainIdentity, Group, ListenerType, ProviderClientWithSigner,
     };
     use arpa_dal::{
@@ -275,7 +275,7 @@ mod tests {
         let wallet: PrivateKeySigner = anvil.keys()[0].clone().into();
         let chain_id = anvil.chain_id();
 
-        let client = build_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
+        let client = build_websocket_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
 
         let config = Config::default();
 
@@ -284,7 +284,7 @@ mod tests {
         let chain_identity = GeneralMainChainIdentity::new(
             chain_id,
             wallet.clone(),
-            ws_connect.clone(),
+            Some(ws_connect.clone()),
             client.clone(),
             anvil.ws_endpoint(),
             controller,
@@ -413,7 +413,7 @@ mod tests {
 
         let ws_connect = WsConnect::new(anvil.ws_endpoint());
         let wallet: PrivateKeySigner = anvil.keys()[0].clone().into();
-        let client = build_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
+        let client = build_websocket_client(wallet.clone(), chain_id, ws_connect.clone()).await?;
 
         let node_registry_address = random_address();
         let controller = MockController::deploy(client.clone(), node_registry_address)
@@ -429,7 +429,7 @@ mod tests {
         let chain_identity = GeneralMainChainIdentity::new(
             chain_id,
             wallet.clone(),
-            ws_connect.clone(),
+            Some(ws_connect.clone()),
             client.clone(),
             anvil.ws_endpoint(),
             controller_address,

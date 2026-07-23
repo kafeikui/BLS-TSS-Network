@@ -55,8 +55,8 @@ pub mod tests {
     };
     use alloy::{node_bindings::Anvil, providers::WsConnect, signers::local::PrivateKeySigner};
     use arpa_core::{
-        build_client, random_address, Config, GeneralMainChainIdentity, ListenerDescriptor,
-        ListenerType,
+        build_websocket_client, random_address, Config, GeneralMainChainIdentity,
+        ListenerDescriptor, ListenerType,
     };
     use arpa_dal::{cache::InMemoryBlockInfoCache, BlockInfoHandler};
     use std::{sync::Arc, time::Duration};
@@ -98,14 +98,14 @@ pub mod tests {
         let ws_connect =
             WsConnect::new(avnil.ws_endpoint()).with_retry_interval(Duration::from_millis(3000));
 
-        let client = build_client(fake_wallet.clone(), chain_id, ws_connect.clone())
+        let client = build_websocket_client(fake_wallet.clone(), chain_id, ws_connect.clone())
             .await
             .unwrap();
 
         let chain_identity = GeneralMainChainIdentity::new(
             0,
             fake_wallet,
-            ws_connect,
+            Some(ws_connect),
             client,
             avnil.ws_endpoint(),
             random_address(),

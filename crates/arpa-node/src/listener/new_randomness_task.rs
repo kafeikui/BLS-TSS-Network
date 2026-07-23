@@ -72,47 +72,51 @@ impl<PC: Curve + Sync + Send> Listener for NewRandomnessTaskListener<PC> {
             .build_adapter_client(self.id_address);
         let chain_id = self.listener_descriptor.chain_id;
 
-        client
-            .subscribe_randomness_task(move |randomness_task| {
-                let randomness_tasks_cache = self.randomness_tasks_cache.clone();
-                let eq = self.eq.clone();
+        let callback = move |randomness_task: RandomnessTask| {
+            let randomness_tasks_cache = self.randomness_tasks_cache.clone();
+            let eq = self.eq.clone();
 
-                async move {
-                    let contained_res = randomness_tasks_cache
-                        .read()
+            async move {
+                let contained_res = randomness_tasks_cache
+                    .read()
+                    .await
+                    .contains(&randomness_task.request_id)
+                    .await;
+                if let Ok(false) = contained_res {
+                    info!(
+                        "{}",
+                        build_task_related_payload(
+                            LogType::TaskReceived,
+                            "New randomness task received.",
+                            chain_id,
+                            &randomness_task.request_id,
+                            TaskType::BLS(BLSTaskType::Randomness),
+                            json!(randomness_task),
+                            None
+                        )
+                    );
+
+                    randomness_tasks_cache
+                        .write()
                         .await
-                        .contains(&randomness_task.request_id)
+                        .add(randomness_task.clone())
+                        .await
+                        .map_err(anyhow::Error::from)?;
+
+                    eq.read()
+                        .await
+                        .publish(NewRandomnessTask::new(chain_id, randomness_task))
                         .await;
-                    if let Ok(false) = contained_res {
-                        info!(
-                            "{}",
-                            build_task_related_payload(
-                                LogType::TaskReceived,
-                                "New randomness task received.",
-                                chain_id,
-                                &randomness_task.request_id,
-                                TaskType::BLS(BLSTaskType::Randomness),
-                                json!(randomness_task),
-                                None
-                            )
-                        );
-
-                        randomness_tasks_cache
-                            .write()
-                            .await
-                            .add(randomness_task.clone())
-                            .await
-                            .map_err(anyhow::Error::from)?;
-
-                        eq.read()
-                            .await
-                            .publish(NewRandomnessTask::new(chain_id, randomness_task))
-                            .await;
-                    }
-                    Ok(())
                 }
-            })
-            .await?;
+                Ok(())
+            }
+        };
+
+        if self.chain_identity.read().await.supports_websocket() {
+            client.subscribe_randomness_task(callback).await?;
+        } else {
+            client.watch_randomness_task(callback).await?;
+        }
 
         Ok(())
     }
@@ -152,7 +156,7 @@ mod tests {
     use alloy::sol;
     use anyhow::anyhow;
     use arpa_core::{
-        build_client, random_address, Config, FixedIntervalRetryDescriptor,
+        build_websocket_client, random_address, Config, FixedIntervalRetryDescriptor,
         GeneralMainChainIdentity, ListenerType, ProviderClientWithSigner, RandomnessRequestType,
         RandomnessTask,
     };
@@ -250,7 +254,9 @@ mod tests {
             let chain_id = anvil.chain_id();
             println!("Chain ID: {}", chain_id);
 
-            let client = build_client(wallet.clone(), anvil.chain_id(), ws_connect.clone()).await?;
+            let client =
+                build_websocket_client(wallet.clone(), anvil.chain_id(), ws_connect.clone())
+                    .await?;
 
             let mock_adapter = deploy_mock_adapter(client.clone())
                 .await
@@ -264,7 +270,7 @@ mod tests {
             let chain_identity = GeneralMainChainIdentity::new(
                 chain_id,
                 wallet.clone(),
-                ws_connect.clone(),
+                Some(ws_connect.clone()),
                 client.clone(),
                 anvil.ws_endpoint(),
                 controller_address,

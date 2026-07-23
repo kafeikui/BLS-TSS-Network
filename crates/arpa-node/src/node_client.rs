@@ -6,8 +6,9 @@ use arpa_contract_client::error::ContractClientError;
 use arpa_contract_client::node_registry::NodeRegistryViews;
 use arpa_contract_client::node_registry::{NodeRegistryClientBuilder, NodeRegistryTransactions};
 use arpa_core::address_to_string;
-use arpa_core::build_client;
+use arpa_core::build_http_client;
 use arpa_core::build_wallet_from_config;
+use arpa_core::build_websocket_client;
 use arpa_core::log::build_general_payload;
 use arpa_core::log::build_transaction_receipt_payload;
 use arpa_core::log::encoder::JsonEncoder;
@@ -309,11 +310,26 @@ async fn start(
     //     )),
     // );
 
-    let ws_connect = WsConnect::new(config.get_provider_endpoint()).with_retry_interval(
-        Duration::from_millis(config.get_time_limits().provider_polling_interval_millis),
-    );
+    let ws_connect = if config.supports_websocket() {
+        Some(
+            WsConnect::new(config.get_provider_endpoint()).with_retry_interval(
+                Duration::from_millis(config.get_time_limits().provider_polling_interval_millis),
+            ),
+        )
+    } else {
+        None
+    };
 
-    let client = build_client(wallet.clone(), l1_chain_id, ws_connect.clone()).await?;
+    let client = if config.supports_websocket() {
+        build_websocket_client(wallet.clone(), l1_chain_id, ws_connect.clone().unwrap()).await?
+    } else {
+        build_http_client(
+            wallet.clone(),
+            l1_chain_id,
+            config.get_provider_endpoint().parse().unwrap(),
+        )
+        .await?
+    };
 
     let main_chain_identity = GeneralMainChainIdentity::new(
         l1_chain_id,
@@ -361,15 +377,38 @@ async fn start(
     for relayed_chain_config in relayed_chains_config {
         let relayed_chain_id = relayed_chain_config.get_chain_id();
 
-        let ws_connect = WsConnect::new(relayed_chain_config.get_provider_endpoint())
-            .with_max_retries(DEFAULT_WEBSOCKET_PROVIDER_RECONNECT_TIMES)
-            .with_retry_interval(Duration::from_millis(
-                relayed_chain_config
-                    .get_time_limits()
-                    .provider_polling_interval_millis,
-            ));
+        let ws_connect = if relayed_chain_config.supports_websocket() {
+            Some(
+                WsConnect::new(relayed_chain_config.get_provider_endpoint())
+                    .with_max_retries(DEFAULT_WEBSOCKET_PROVIDER_RECONNECT_TIMES)
+                    .with_retry_interval(Duration::from_millis(
+                        relayed_chain_config
+                            .get_time_limits()
+                            .provider_polling_interval_millis,
+                    )),
+            )
+        } else {
+            None
+        };
 
-        let client = build_client(wallet.clone(), relayed_chain_id, ws_connect.clone()).await?;
+        let client = if relayed_chain_config.supports_websocket() {
+            build_websocket_client(
+                wallet.clone(),
+                relayed_chain_id,
+                ws_connect.clone().unwrap(),
+            )
+            .await?
+        } else {
+            build_http_client(
+                wallet.clone(),
+                relayed_chain_id,
+                relayed_chain_config
+                    .get_provider_endpoint()
+                    .parse()
+                    .unwrap(),
+            )
+            .await?
+        };
 
         let relayed_chain_identity = GeneralRelayedChainIdentity::new(
             relayed_chain_id,

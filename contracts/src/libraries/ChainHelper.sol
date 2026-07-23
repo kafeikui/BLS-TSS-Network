@@ -29,7 +29,8 @@ library ChainHelper {
     uint256 private constant REDSTONE_HOLESKY_TESTNET_CHAIN_ID = 17001;
     uint256 private constant LOOT_MAINNET_CHAIN_ID = 5151706;
     uint256 private constant LOOT_GOERLI_TESTNET_CHAIN_ID = 9088912;
-    uint256 private constant TAIKO_KATLA_TEST_CHAIN_ID = 167008;
+    uint256 private constant TAIKO_MAINNET_CHAIN_ID = 167000;
+    uint256 private constant TAIKO_HOODI_TESTNET_CHAIN_ID = 167013;
     uint256 private constant B3_MAINNET_CHAIN_ID = 8333;
     uint256 private constant B3_TESTNET_CHAIN_ID = 1993;
 
@@ -64,13 +65,15 @@ library ChainHelper {
             chainId == OP_MAINNET_CHAIN_ID || chainId == OP_SEPOLIA_TESTNET_CHAIN_ID || chainId == OP_DEVNET_L2_CHAIN_ID
                 || chainId == BASE_MAINNET_CHAIN_ID || chainId == BASE_SEPOLIA_TESTNET_CHAIN_ID
                 || chainId == REDSTONE_HOLESKY_TESTNET_CHAIN_ID || chainId == REDSTONE_MAINNET_CHAIN_ID
-                || chainId == REDSTONE_GARNET_TESTNET_CHAIN_ID
+                || chainId == REDSTONE_GARNET_TESTNET_CHAIN_ID || chainId == TAIKO_HOODI_TESTNET_CHAIN_ID
         ) {
             return 2 * BLOCK_TIME_DENOMINATOR;
-        } else if (chainId == OP_DEVNET_L1_CHAIN_ID || chainId == TAIKO_KATLA_TEST_CHAIN_ID) {
+        } else if (chainId == OP_DEVNET_L1_CHAIN_ID) {
             return 3 * BLOCK_TIME_DENOMINATOR;
         } else if (chainId == LOOT_MAINNET_CHAIN_ID || chainId == LOOT_GOERLI_TESTNET_CHAIN_ID) {
             return 5 * BLOCK_TIME_DENOMINATOR;
+        } else if (chainId == TAIKO_MAINNET_CHAIN_ID) {
+            return 6 * BLOCK_TIME_DENOMINATOR;
         } else if (chainId == B3_MAINNET_CHAIN_ID || chainId == B3_TESTNET_CHAIN_ID) {
             return 1 * BLOCK_TIME_DENOMINATOR;
         } else if (chainId == BSC_MAINNET_CHAIN_ID) {
@@ -101,9 +104,11 @@ library ChainHelper {
         } else if (_isOPChainId(chainId)) {
             try IOPGasPriceOracle(OP_GAS_PRICE_ORACLE_ADDR).isEcotone() returns (bool isEcotone) {
                 if (isEcotone) {
-                    uint256 scaledBaseFee = IOPGasPriceOracle(OP_GAS_PRICE_ORACLE_ADDR).baseFeeScalar() * 16
+                    uint256 scaledBaseFee =
+                        IOPGasPriceOracle(OP_GAS_PRICE_ORACLE_ADDR).baseFeeScalar() * 16
                         * IOPGasPriceOracle(OP_GAS_PRICE_ORACLE_ADDR).l1BaseFee();
-                    uint256 scaledBlobBaseFee = IOPGasPriceOracle(OP_GAS_PRICE_ORACLE_ADDR).blobBaseFeeScalar()
+                    uint256 scaledBlobBaseFee =
+                        IOPGasPriceOracle(OP_GAS_PRICE_ORACLE_ADDR).blobBaseFeeScalar()
                         * IOPGasPriceOracle(OP_GAS_PRICE_ORACLE_ADDR).blobBaseFee();
                     uint256 fee = l1GasUsed * (scaledBaseFee + scaledBlobBaseFee);
                     return fee / (16 * 10 ** DECIMALS);
