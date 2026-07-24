@@ -13,7 +13,7 @@ use arpa_core::{
 };
 use async_trait::async_trait;
 use error::ContractClientResult;
-use log::{error, info};
+use log::{error, info, warn};
 use tokio_retry::strategy::ExponentialBackoff;
 use tokio_retry::{Retry, RetryIf};
 
@@ -54,14 +54,37 @@ pub trait TransactionCaller {
                 })
                 .take(contract_transaction_retry_descriptor.max_attempts);
 
+        // `max_priority_fee_per_gas` in the config is meant as an explicit override for chains
+        // whose `eth_gasPrice`/fee history estimate is unreliable. A configured value of exactly
+        // `0` would otherwise force the transaction's gas price (and, for legacy chains, its
+        // whole `gas_price`) to zero, which no miner/validator will ever include, silently
+        // stalling `fulfill_randomness` forever. Treat `Some(0)` the same as `None` (i.e. fall
+        // back to auto-estimation) and warn so misconfigurations are visible.
+        if max_priority_fee_per_gas == Some(0) {
+            warn!(
+                "max_priority_fee_per_gas is configured as 0 for chain_id({}); ignoring it and \
+                 falling back to auto-estimated gas price, since a literal 0 gas price would \
+                 never be included on-chain.",
+                chain_id
+            );
+        }
+        let max_priority_fee_per_gas = max_priority_fee_per_gas.filter(|v| *v != 0);
+
         let mut tx = call.into_transaction_request();
 
         // transform the trx to legacy if the chain does not support EIP-1559
         if !supports_eip1559(chain_id) {
             // call = call.legacy();
-            if let Some(max_priority_fee_per_gas) = max_priority_fee_per_gas {
-                tx.gas_price = Some(max_priority_fee_per_gas);
-            }
+            // When no explicit override is configured, fetch `eth_gasPrice` ourselves rather
+            // than leaving `tx.gas_price` unset: without a value here the provider's fee filler
+            // would still try (and, for chains that partially expose EIP-1559 RPC fields, may
+            // succeed at) an EIP-1559 estimation first, which is exactly the unreliable path
+            // we're trying to avoid for chains like BSC.
+            let gas_price = match max_priority_fee_per_gas {
+                Some(max_priority_fee_per_gas) => max_priority_fee_per_gas,
+                None => client.get_gas_price().await?,
+            };
+            tx.gas_price = Some(gas_price);
         }
         // set gas price for EIP-1559 trxs
         else if tx.has_eip1559_fields() {

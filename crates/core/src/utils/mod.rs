@@ -29,7 +29,16 @@ pub const BSC_MAINNET_CHAIN_ID: u64 = 56;
 pub const ARPA_CHAIN_ID: u64 = 4224;
 
 pub fn supports_eip1559(chain_id: u64) -> bool {
-    chain_id != LOOT_MAINNET_CHAIN_ID && chain_id != LOOT_TESTNET_CHAIN_ID
+    // BSC's RPC nodes generally report a base fee of 0 and empty/zero `eth_feeHistory`
+    // reward percentiles, since in practice almost every transaction on the chain pays a
+    // single flat gas price rather than participating in an EIP-1559-style fee market. Our
+    // EIP-1559 estimator (and its block-header-based fallback) then also resolves to 0,
+    // which produces underpriced transactions that never get included. Treat BSC as a
+    // "legacy" chain for gas estimation purposes so we go straight to `eth_gasPrice`, which
+    // does reflect BSC's real (flat) gas price.
+    chain_id != LOOT_MAINNET_CHAIN_ID
+        && chain_id != LOOT_TESTNET_CHAIN_ID
+        && chain_id != BSC_MAINNET_CHAIN_ID
 }
 
 pub fn format_now_date() -> String {
