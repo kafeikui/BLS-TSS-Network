@@ -1,5 +1,7 @@
 use alloy::providers::WsConnect;
 use alloy::signers::local::PrivateKeySigner;
+use alloy::transports::http::reqwest::Url;
+use alloy::transports::TransportError;
 use arpa_contract_client::controller::ControllerClientBuilder;
 use arpa_contract_client::controller::ControllerViews;
 use arpa_contract_client::error::ContractClientError;
@@ -9,13 +11,16 @@ use arpa_core::address_to_string;
 use arpa_core::build_http_client;
 use arpa_core::build_wallet_from_config;
 use arpa_core::build_websocket_client;
+use arpa_core::jitter;
 use arpa_core::log::build_general_payload;
 use arpa_core::log::build_transaction_receipt_payload;
 use arpa_core::log::encoder::JsonEncoder;
 use arpa_core::log::LogType;
 use arpa_core::Config;
+use arpa_core::FixedIntervalRetryDescriptor;
 use arpa_core::GeneralMainChainIdentity;
 use arpa_core::GeneralRelayedChainIdentity;
+use arpa_core::ProviderClientWithSigner;
 use arpa_core::DEFAULT_WEBSOCKET_PROVIDER_RECONNECT_TIMES;
 use arpa_dal::GroupInfoHandler;
 use arpa_dal::NodeInfoHandler;
@@ -46,6 +51,8 @@ use threshold_bls::serialize::point_to_hex;
 use threshold_bls::sig::Scheme;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
+use tokio_retry::strategy::FixedInterval;
+use tokio_retry::Retry;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -147,6 +154,80 @@ fn init_logger(
     log4rs::init_config(log_config).unwrap();
 }
 
+/// Builds a websocket provider client, retrying on failure (e.g. transient DNS/network
+/// errors) according to `reset_descriptor` instead of failing the whole node on the first
+/// hiccup. This reuses the same retry budget (`provider_reset_descriptor`) that governs
+/// provider reconnection once the node is running.
+async fn connect_websocket_client_with_retry(
+    wallet: PrivateKeySigner,
+    chain_id: u64,
+    ws_connect: WsConnect,
+    reset_descriptor: FixedIntervalRetryDescriptor,
+) -> Result<ProviderClientWithSigner, TransportError> {
+    let retry_strategy = FixedInterval::from_millis(reset_descriptor.interval_millis)
+        .map(move |d| {
+            if reset_descriptor.use_jitter {
+                jitter(d)
+            } else {
+                d
+            }
+        })
+        .take(reset_descriptor.max_attempts);
+
+    Retry::spawn(retry_strategy, || {
+        let wallet = wallet.clone();
+        let ws_connect = ws_connect.clone();
+        async move {
+            build_websocket_client(wallet, chain_id, ws_connect)
+                .await
+                .map_err(|e| {
+                    error!(
+                        "failed to connect websocket provider for chain {}: {:?}. Retrying...",
+                        chain_id, e
+                    );
+                    e
+                })
+        }
+    })
+    .await
+}
+
+/// Builds an http provider client, retrying on failure. See
+/// `connect_websocket_client_with_retry` for rationale.
+async fn connect_http_client_with_retry(
+    wallet: PrivateKeySigner,
+    chain_id: u64,
+    http_connect: Url,
+    reset_descriptor: FixedIntervalRetryDescriptor,
+) -> Result<ProviderClientWithSigner, TransportError> {
+    let retry_strategy = FixedInterval::from_millis(reset_descriptor.interval_millis)
+        .map(move |d| {
+            if reset_descriptor.use_jitter {
+                jitter(d)
+            } else {
+                d
+            }
+        })
+        .take(reset_descriptor.max_attempts);
+
+    Retry::spawn(retry_strategy, || {
+        let wallet = wallet.clone();
+        let http_connect = http_connect.clone();
+        async move {
+            build_http_client(wallet, chain_id, http_connect)
+                .await
+                .map_err(|e| {
+                    error!(
+                        "failed to connect http provider for chain {}: {:?}. Retrying...",
+                        chain_id, e
+                    );
+                    e
+                })
+        }
+    })
+    .await
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::from_args();
@@ -199,7 +280,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     if let Err(e) = start(config, wallet, shutdown_rx).await {
-        error!("{:?}", e);
+        error!("node exited with a fatal error: {:?}", e);
+        std::process::exit(1);
     };
 
     info!("node exit normally");
@@ -321,12 +403,19 @@ async fn start(
     };
 
     let client = if config.supports_websocket() {
-        build_websocket_client(wallet.clone(), l1_chain_id, ws_connect.clone().unwrap()).await?
+        connect_websocket_client_with_retry(
+            wallet.clone(),
+            l1_chain_id,
+            ws_connect.clone().unwrap(),
+            config.get_time_limits().provider_reset_descriptor,
+        )
+        .await?
     } else {
-        build_http_client(
+        connect_http_client_with_retry(
             wallet.clone(),
             l1_chain_id,
             config.get_provider_endpoint().parse().unwrap(),
+            config.get_time_limits().provider_reset_descriptor,
         )
         .await?
     };
@@ -392,20 +481,26 @@ async fn start(
         };
 
         let client = if relayed_chain_config.supports_websocket() {
-            build_websocket_client(
+            connect_websocket_client_with_retry(
                 wallet.clone(),
                 relayed_chain_id,
                 ws_connect.clone().unwrap(),
+                relayed_chain_config
+                    .get_time_limits()
+                    .provider_reset_descriptor,
             )
             .await?
         } else {
-            build_http_client(
+            connect_http_client_with_retry(
                 wallet.clone(),
                 relayed_chain_id,
                 relayed_chain_config
                     .get_provider_endpoint()
                     .parse()
                     .unwrap(),
+                relayed_chain_config
+                    .get_time_limits()
+                    .provider_reset_descriptor,
             )
             .await?
         };

@@ -44,3 +44,4 @@ passwd
 
 *.log
 *.keystore
+debug/

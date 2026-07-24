@@ -54,12 +54,17 @@ use result::BaseSignatureResultDBClient;
 use result::LootSignatureResultDBClient;
 use result::RedstoneSignatureResultDBClient;
 use result::TaikoSignatureResultDBClient;
-use sea_orm::ConnectOptions;
 use sea_orm::ConnectionTrait;
 use sea_orm::DatabaseBackend;
 use sea_orm::FromQueryResult;
 use sea_orm::QueryResult;
+use sea_orm::SqlxSqliteConnector;
 use sea_orm::Statement;
+use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::sqlite::SqliteJournalMode;
+use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::sqlite::SqliteSynchronous;
+use sqlx::ConnectOptions as _;
 use std::time::Duration;
 use task::B3BLSTasksDBClient;
 use task::BaseBLSTasksDBClient;
@@ -73,17 +78,33 @@ impl SqliteDB {
         db_path: &str,
         signing_key: &[u8],
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut opt = ConnectOptions::new(format!("sqlite://{}?mode=rwc", db_path));
-        opt.max_connections(100)
-            .min_connections(5)
-            .connect_timeout(Duration::from_secs(8))
-            .idle_timeout(Duration::from_secs(8))
-            .max_lifetime(Duration::from_secs(8))
-            .sqlx_logging(true)
-            .sqlx_logging_level(LevelFilter::Debug)
-            .sqlcipher_key(format!("\"x'{}'\"", hex::encode(signing_key)));
+        // A single SQLite file backs every chain the node handles (main chain plus all
+        // relayed chains), each of which runs several concurrently-polling listeners and
+        // subscribers as independent tokio tasks. SQLite only allows a single writer at a
+        // time, and in the default rollback-journal mode a writer also blocks all readers,
+        // so a large connection pool (previously up to 100 connections) just increases
+        // contention instead of throughput. WAL mode lets readers proceed concurrently with
+        // a writer, and a generous busy_timeout makes SQLite retry internally instead of
+        // immediately surfacing "database is locked" (SQLITE_BUSY) errors to callers.
+        let mut opt: SqliteConnectOptions =
+            format!("sqlite://{}?mode=rwc", db_path).parse()?;
+        opt = opt
+            .pragma("key", format!("\"x'{}'\"", hex::encode(signing_key)))
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(Duration::from_secs(30))
+            .log_statements(LevelFilter::Debug);
 
-        let connection = sea_orm::Database::connect(opt).await?;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(16)
+            .min_connections(1)
+            .acquire_timeout(Duration::from_secs(30))
+            .idle_timeout(Duration::from_secs(8))
+            .max_lifetime(Duration::from_secs(1800))
+            .connect_with(opt)
+            .await?;
+
+        let connection = SqlxSqliteConnector::from_sqlx_sqlite_pool(pool);
 
         let db = SqliteDB { connection };
 
@@ -298,6 +319,7 @@ pub mod sqlite_tests {
     use arpa_dal::GroupInfoUpdater;
     use arpa_dal::NodeInfoFetcher;
     use arpa_dal::NodeInfoUpdater;
+    use sea_orm::ConnectionTrait;
     use std::{fs, path::PathBuf};
     use threshold_bls::curve::bn254::G2Curve;
     use threshold_bls::schemes::bn254::G2Scheme;
@@ -307,14 +329,21 @@ pub mod sqlite_tests {
 
     const CIPHER_KEY: &str = "passphrase";
 
-    fn setup() {
-        if PathBuf::from(DB_PATH).exists() {
-            fs::remove_file(DB_PATH).expect("could not remove file");
+    fn remove_db_files() {
+        for suffix in ["", "-wal", "-shm"] {
+            let path = format!("{}{}", DB_PATH, suffix);
+            if PathBuf::from(&path).exists() {
+                fs::remove_file(&path).expect("could not remove file");
+            }
         }
     }
 
+    fn setup() {
+        remove_db_files();
+    }
+
     fn teardown() {
-        fs::remove_file(DB_PATH).expect("could not remove file");
+        remove_db_files();
     }
 
     pub async fn build_sqlite_db() -> Result<SqliteDB, Box<dyn std::error::Error>> {
@@ -328,6 +357,41 @@ pub mod sqlite_tests {
         let db = build_sqlite_db().await;
 
         assert!(db.is_ok());
+
+        teardown();
+    }
+
+    #[tokio::test]
+    async fn test_wal_mode_and_busy_timeout_enabled() {
+        setup();
+
+        let db = build_sqlite_db().await.unwrap();
+
+        let journal_mode: String = db
+            .connection
+            .query_one(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Sqlite,
+                "PRAGMA journal_mode;".to_owned(),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "journal_mode")
+            .unwrap();
+        assert_eq!("wal", journal_mode.to_lowercase());
+
+        let busy_timeout: i32 = db
+            .connection
+            .query_one(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Sqlite,
+                "PRAGMA busy_timeout;".to_owned(),
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "timeout")
+            .unwrap();
+        assert_eq!(30000, busy_timeout);
 
         teardown();
     }
